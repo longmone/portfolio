@@ -33,10 +33,10 @@ The portfolio stores projects and profile assets in Supabase, so edits are share
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
    ```
 
-4. Add the same variables to your hosting provider's environment settings. Keep `ADMIN_PASSWORD` and `SUPABASE_SERVICE_ROLE_KEY` private; only the two `NEXT_PUBLIC_` values are sent to the browser.
+4. Add the same variables to your hosting provider's environment settings. Keep `ADMIN_PASSWORD` and `SUPABASE_SERVICE_ROLE_KEY` private; only the two `NEXT_PUBLIC_` values are sent to the browser. The publishable key is safe for browser use; the service-role key is still required by the server API and must not be shared publicly.
 5. Restart the local server or redeploy. Visit `/admin`, sign in, and manage projects, images, profile photo, and CV. Uploads go directly to Supabase Storage using short-lived signed upload tokens; the configured bucket limit is 50 MB per file.
 
 The admin password is checked server-side. The login API creates a signed, HTTP-only session cookie. Public pages reload content when opened, when refocused, and every 30 seconds. Export/import JSON remains available as a backup and restore option.
@@ -55,7 +55,7 @@ npm start
 ## Deploy to Vercel
 
 1. Push this project to a Git provider and import it in Vercel.
-2. In **Project Settings → Environment Variables**, set `ADMIN_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for Production (and Preview if required).
+2. In **Project Settings → Environment Variables**, set `ADMIN_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for Production (and Preview if required).
 3. Deploy. Vercel detects Next.js automatically; no `vercel.json` is necessary.
 4. Visit `https://your-domain.example/admin` to manage the portfolio.
 
