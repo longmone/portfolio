@@ -1,17 +1,17 @@
 # Mawuli Christoson — Portfolio
 
-A vibrant, responsive portfolio built with Next.js 14 App Router, TypeScript, Tailwind CSS, Framer Motion, and Lucide icons.
+A vibrant, responsive portfolio built with Next.js 16 App Router, TypeScript, Tailwind CSS, Framer Motion, and Lucide icons.
 
 ## Run locally
 
-1. Install Node.js 18.17+.
+1. Install Node.js 20.9+.
 2. Install dependencies:
 
    ```bash
    npm install
    ```
 
-3. Copy `.env.example` to `.env.local` and set `ADMIN_PASSWORD` to a private password. The example uses `mawuli2026` for local setup; choose a different value before deploying.
+3. Copy `.env.example` to `.env.local` and set `ADMIN_PASSWORD` to a strong private value. Use a separate production value in Vercel.
 4. Start the development server:
 
    ```bash
@@ -39,10 +39,6 @@ The admin password is checked server-side. The login API creates a signed, HTTP-
 npm run build
 npm start
 ```
-
-### Dependency security
-
-This project pins the latest published Next.js 14 patch to honor the requested stack. The current npm audit database still reports a critical advisory for the Next.js 14 line; remove it by upgrading to a supported patched Next.js major and retesting before an internet-facing production launch. The nested PostCSS dependency is pinned to its patched 8.5.23 release.
 
 ## Deploy to Vercel
 

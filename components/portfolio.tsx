@@ -181,10 +181,6 @@ export default function Portfolio() {
     : undefined;
 
   useEffect(() => {
-    setActiveWork(0);
-  }, [filter]);
-
-  useEffect(() => {
     if (featuredWorks.length < 2) return;
     const timer = window.setInterval(() => setActiveWork((current) => (current + 1) % featuredWorks.length), 6000);
     return () => window.clearInterval(timer);
@@ -374,7 +370,10 @@ export default function Portfolio() {
                 {categoriesFilter.map((category) => (
                   <button
                     key={category}
-                    onClick={() => setFilter(category)}
+                    onClick={() => {
+                      setActiveWork(0);
+                      setFilter(category);
+                    }}
                     className={`shrink-0 rounded-full border px-4 py-2.5 text-xs transition ${filter === category ? "border-white/30 bg-white/10 text-white" : "border-white/10 text-white/55 hover:border-white/25 hover:text-white"}`}
                   >
                     {category}

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   ArrowDown,
   ArrowLeft,
@@ -247,7 +248,7 @@ export default function AdminDashboard() {
     return (
       <main className="admin-shell grid min-h-screen place-items-center px-4 py-10">
         <div className="glass w-full max-w-md rounded-[28px] p-7 sm:p-9">
-          <a href="/" className="font-display text-xl font-bold tracking-[-0.08em]">MC<span className="text-violet">.</span></a>
+          <Link href="/" className="font-display text-xl font-bold tracking-[-0.08em]">MC<span className="text-violet">.</span></Link>
           <p className="eyebrow mt-10">Private workspace</p>
           <h1 className="font-display mt-3 text-3xl font-semibold tracking-tight">Welcome back.</h1>
           <p className="mt-3 text-sm leading-6 text-white/55">Sign in to manage your portfolio and creative work.</p>
@@ -257,7 +258,7 @@ export default function AdminDashboard() {
             {loginError && <p role="alert" className="mt-3 text-xs text-rose-300">{loginError}</p>}
             <button type="submit" disabled={busy} className="mt-5 w-full rounded-full bg-lime px-5 py-3 text-sm font-bold text-black transition hover:bg-lime/90 disabled:opacity-60">{busy ? "Signing in…" : "Sign in"}</button>
           </form>
-          <a href="/" className="mt-6 inline-flex items-center gap-2 text-xs text-white/50 hover:text-white"><ArrowLeft size={14} /> Back to portfolio</a>
+          <Link href="/" className="mt-6 inline-flex items-center gap-2 text-xs text-white/50 hover:text-white"><ArrowLeft size={14} /> Back to portfolio</Link>
         </div>
       </main>
     );
@@ -268,12 +269,12 @@ export default function AdminDashboard() {
       <div className="mx-auto max-w-6xl">
         <header className="mb-9 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <a href="/" className="font-display text-xl font-bold tracking-[-0.08em]">MC<span className="text-violet">.</span></a>
+            <Link href="/" className="font-display text-xl font-bold tracking-[-0.08em]">MC<span className="text-violet">.</span></Link>
             <p className="mt-3 text-xs uppercase tracking-[0.18em] text-violet">Portfolio workspace</p>
             <h1 className="font-display mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">My Works Manager</h1>
           </div>
           <div className="flex flex-wrap gap-2">
-            <a href="/" className="glass rounded-full px-4 py-2.5 text-xs font-semibold transition hover:bg-white/10">View site</a>
+            <Link href="/" className="glass rounded-full px-4 py-2.5 text-xs font-semibold transition hover:bg-white/10">View site</Link>
             <button onClick={logout} className="glass inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-semibold text-white/70 transition hover:text-white"><LogOut size={14} /> Sign out</button>
           </div>
         </header>
