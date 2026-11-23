@@ -16,7 +16,14 @@ import {
   X,
 } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { defaultProfile, readProfile, readWorks, saveProfile, saveWorks, type ProfileAssets } from "@/lib/storage";
+import {
+  defaultProfile,
+  fetchPortfolioContent,
+  saveProfile,
+  saveWorks,
+  uploadMedia,
+  type ProfileAssets,
+} from "@/lib/storage";
 import { categories, initialWorks, type Work, type WorkCategory } from "@/lib/works";
 
 const emptyWork = (): Work => ({
@@ -30,18 +37,6 @@ const emptyWork = (): Work => ({
   tags: [],
   featured: false,
 });
-
-function readFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error(`Could not read ${file.name}.`));
-    };
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function AdminDashboard() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -59,16 +54,28 @@ export default function AdminDashboard() {
   const cvInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch("/api/admin/login")
-      .then(async (response) => {
+    let active = true;
+    async function checkAccess() {
+      try {
+        const response = await fetch("/api/admin/login");
         if (response.ok) {
-          setAuthenticated(true);
-          setWorks(readWorks());
-          setProfile(readProfile());
+          const content = await fetchPortfolioContent();
+          if (active) {
+            setWorks(content.works);
+            setProfile(content.profile);
+            setAuthenticated(true);
+          }
         }
-      })
-      .catch(() => setLoginError("Could not connect to the login service."))
-      .finally(() => setChecking(false));
+      } catch (error) {
+        if (active) {
+          setLoginError(error instanceof Error ? error.message : "Could not load portfolio content.");
+        }
+      } finally {
+        if (active) setChecking(false);
+      }
+    }
+    checkAccess();
+    return () => { active = false; };
   }, []);
 
   function notify(text: string) {
@@ -88,9 +95,10 @@ export default function AdminDashboard() {
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Login failed.");
+      const content = await fetchPortfolioContent();
+      setWorks(content.works);
+      setProfile(content.profile);
       setAuthenticated(true);
-      setWorks(readWorks());
-      setProfile(readProfile());
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : "Login failed. Please try again.");
     } finally {
@@ -108,13 +116,15 @@ export default function AdminDashboard() {
     }
   }
 
-  function persistWorks(next: Work[]) {
+  async function persistWorks(next: Work[]): Promise<boolean> {
     try {
-      saveWorks(next);
+      await saveWorks(next);
       setWorks(next);
+      return true;
     } catch (error) {
       console.error("Could not save portfolio works.", error);
-      notify("Could not save. Browser storage may be full; remove large images and try again.");
+      notify(error instanceof Error ? error.message : "Could not save portfolio works.");
+      return false;
     }
   }
 
@@ -122,14 +132,14 @@ export default function AdminDashboard() {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (!files.length || !editing) return;
-    const oversized = files.find((file) => file.size > 1_200_000);
+    const oversized = files.find((file) => file.size > 50 * 1024 * 1024);
     if (oversized) {
-      notify(`${oversized.name} is too large. Each image must be under 1.2 MB.`);
+      notify(`${oversized.name} is too large. Supabase allows files up to 50 MB.`);
       return;
     }
     setBusy(true);
     try {
-      const images = await Promise.all(files.map(readFile));
+      const images = await Promise.all(files.map(uploadMedia));
       setEditing({ ...editing, images: [...editing.images, ...images] });
     } catch (error) {
       notify(error instanceof Error ? error.message : "Could not load the selected images.");
@@ -142,17 +152,16 @@ export default function AdminDashboard() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.size > 1_200_000) {
-      notify("Profile photo must be under 1.2 MB.");
-      return;
-    }
+    setBusy(true);
     try {
-      const next = { ...profile, photo: await readFile(file) };
-      saveProfile(next);
+      const next = { ...profile, photo: await uploadMedia(file) };
+      await saveProfile(next);
       setProfile(next);
       notify("Profile photo saved.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Could not save the profile photo.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -160,21 +169,20 @@ export default function AdminDashboard() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.size > 1_200_000) {
-      notify("CV must be under 1.2 MB to fit browser storage.");
-      return;
-    }
+    setBusy(true);
     try {
-      const next = { ...profile, cv: await readFile(file), cvName: file.name };
-      saveProfile(next);
+      const next = { ...profile, cv: await uploadMedia(file), cvName: file.name };
+      await saveProfile(next);
       setProfile(next);
       notify("CV saved.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Could not save the CV.");
+    } finally {
+      setBusy(false);
     }
   }
 
-  function saveWork(event: FormEvent<HTMLFormElement>) {
+  async function saveWork(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editing) return;
     const form = new FormData(event.currentTarget);
@@ -189,17 +197,18 @@ export default function AdminDashboard() {
       featured: form.get("featured") === "on",
     };
     const exists = works.some((work) => work.id === nextWork.id);
-    persistWorks(exists ? works.map((work) => work.id === nextWork.id ? nextWork : work) : [nextWork, ...works]);
-    setEditing(null);
-    notify(exists ? "Work updated." : "Work added.");
+    if (await persistWorks(exists ? works.map((work) => work.id === nextWork.id ? nextWork : work) : [nextWork, ...works])) {
+      setEditing(null);
+      notify(exists ? "Work updated." : "Work added.");
+    }
   }
 
-  function reorder(index: number, direction: number) {
+  async function reorder(index: number, direction: number) {
     const target = index + direction;
     if (target < 0 || target >= works.length) return;
     const next = [...works];
     [next[index], next[target]] = [next[target], next[index]];
-    persistWorks(next);
+    await persistWorks(next);
   }
 
   function exportWorks() {
@@ -222,10 +231,21 @@ export default function AdminDashboard() {
       if (!Array.isArray(parsed) || !parsed.every(isWork)) {
         throw new Error("This file is not a valid works backup.");
       }
-      persistWorks(parsed);
-      notify("Works imported.");
+      if (await persistWorks(parsed)) notify("Works imported.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Could not import that file.");
+    }
+  }
+
+  async function restoreSamples() {
+    if (window.confirm("Restore the six original sample works? This replaces your current works.")) {
+      if (await persistWorks(initialWorks)) notify("Sample works restored.");
+    }
+  }
+
+  async function deleteWork(work: Work) {
+    if (window.confirm(`Delete “${work.title}”?`)) {
+      if (await persistWorks(works.filter((item) => item.id !== work.id))) notify("Work deleted.");
     }
   }
 
@@ -291,7 +311,7 @@ export default function AdminDashboard() {
           <button onClick={() => setEditing(emptyWork())} className="inline-flex items-center gap-2 rounded-full bg-lime px-5 py-3 text-sm font-bold text-black transition hover:bg-lime/90"><Plus size={16} /> Add new work</button>
           <button onClick={exportWorks} className="glass inline-flex items-center gap-2 rounded-full px-4 py-3 text-xs font-semibold text-white/75 hover:bg-white/10"><Download size={15} /> Export JSON</button>
           <button onClick={() => importInput.current?.click()} className="glass inline-flex items-center gap-2 rounded-full px-4 py-3 text-xs font-semibold text-white/75 hover:bg-white/10"><Upload size={15} /> Import JSON</button>
-          <button onClick={() => { if (window.confirm("Restore the six original sample works? This replaces your current works.")) { persistWorks(initialWorks); notify("Sample works restored."); } }} className="glass inline-flex items-center gap-2 rounded-full px-4 py-3 text-xs font-semibold text-white/50 hover:bg-white/10 hover:text-white"><ArrowDown size={14} /> Restore samples</button>
+          <button onClick={restoreSamples} className="glass inline-flex items-center gap-2 rounded-full px-4 py-3 text-xs font-semibold text-white/50 hover:bg-white/10 hover:text-white"><ArrowDown size={14} /> Restore samples</button>
           <button onClick={() => cvInput.current?.click()} className="glass inline-flex items-center gap-2 rounded-full px-4 py-3 text-xs font-semibold text-white/75 hover:bg-white/10"><Upload size={15} /> {profile.cvName ? "Replace CV" : "Upload CV"}</button>
           <input ref={importInput} type="file" accept="application/json,.json" className="hidden" onChange={importWorks} />
           <input ref={cvInput} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={selectCv} />
@@ -319,7 +339,7 @@ export default function AdminDashboard() {
                 <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75"><input type="checkbox" name="featured" defaultChecked={editing.featured} className="h-4 w-4 accent-lime" /> Feature on the homepage carousel</label>
 
                 <div>
-                  <div className="mb-2 flex items-center justify-between"><p className="text-xs text-white/65">Project images</p><p className="text-[0.65rem] text-white/40">Up to 1.2 MB per image</p></div>
+                  <div className="mb-2 flex items-center justify-between"><p className="text-xs text-white/65">Project images</p><p className="text-[0.65rem] text-white/40">Up to 50 MB per file</p></div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {editing.images.map((image, index) => (
                       <div key={`${index}-${image.slice(0, 24)}`} className="relative aspect-[1.4] overflow-hidden rounded-xl border border-white/10">
@@ -358,14 +378,14 @@ export default function AdminDashboard() {
                 <button onClick={() => reorder(index, -1)} disabled={index === 0} aria-label={`Move ${work.title} up`} className="glass rounded-lg p-2 text-white/55 hover:text-white disabled:opacity-25"><ArrowUp size={15} /></button>
                 <button onClick={() => reorder(index, 1)} disabled={index === works.length - 1} aria-label={`Move ${work.title} down`} className="glass rounded-lg p-2 text-white/55 hover:text-white disabled:opacity-25"><ArrowDown size={15} /></button>
                 <button onClick={() => setEditing(work)} className="glass rounded-lg px-4 py-2 text-xs font-semibold text-white/75 hover:text-white">Edit</button>
-                <button onClick={() => { if (window.confirm(`Delete “${work.title}”?`)) { persistWorks(works.filter((item) => item.id !== work.id)); notify("Work deleted."); } }} aria-label={`Delete ${work.title}`} className="glass rounded-lg p-2 text-rose-300/70 hover:bg-rose-500/10 hover:text-rose-200"><Trash2 size={15} /></button>
+                <button onClick={() => deleteWork(work)} aria-label={`Delete ${work.title}`} className="glass rounded-lg p-2 text-rose-300/70 hover:bg-rose-500/10 hover:text-rose-200"><Trash2 size={15} /></button>
               </div>
             </article>
           ))}
           {!works.length && <div className="glass rounded-2xl p-12 text-center"><Check className="mx-auto text-lime" /><p className="mt-4 text-sm text-white/60">No projects yet. Add your first work to get started.</p></div>}
         </section>
 
-        <p className="mt-8 text-center text-[0.68rem] leading-5 text-white/35">Your content is saved in this browser&apos;s local storage. Export a JSON backup regularly. Uploaded files are limited to 1.2 MB each.</p>
+        <p className="mt-8 text-center text-[0.68rem] leading-5 text-white/35">Projects and uploaded files are shared through Supabase. Files can be up to 50 MB each; keep a JSON export as a backup.</p>
       </div>
     </main>
   );

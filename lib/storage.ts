@@ -1,12 +1,15 @@
-import { initialWorks, type Work } from "@/lib/works";
-
-export const WORKS_STORAGE_KEY = "mawuli-portfolio-works-v1";
-export const PROFILE_STORAGE_KEY = "mawuli-portfolio-profile-v1";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Work } from "@/lib/works";
 
 export type ProfileAssets = {
   photo: string;
   cv: string;
   cvName: string;
+};
+
+export type PortfolioContent = {
+  works: Work[];
+  profile: ProfileAssets;
 };
 
 export const defaultProfile: ProfileAssets = {
@@ -15,48 +18,63 @@ export const defaultProfile: ProfileAssets = {
   cvName: "",
 };
 
-export function readWorks(): Work[] {
-  if (typeof window === "undefined") return initialWorks;
-  const saved = window.localStorage.getItem(WORKS_STORAGE_KEY);
-  if (!saved) return initialWorks;
-  try {
-    const parsed: unknown = JSON.parse(saved);
-    if (!Array.isArray(parsed)) throw new Error("Saved works must be a JSON array.");
-    return parsed as Work[];
-  } catch (error) {
-    console.error("Could not read saved portfolio works.", error);
-    return initialWorks;
+let browserClient: SupabaseClient | undefined;
+
+function getBrowserClient(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error(
+      "Supabase browser settings are missing. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    );
   }
+  browserClient ??= createClient(url, anonKey);
+  return browserClient;
 }
 
-export function saveWorks(works: Work[]): void {
-  window.localStorage.setItem(WORKS_STORAGE_KEY, JSON.stringify(works));
-  window.dispatchEvent(new Event("portfolio-works-updated"));
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  const data = (await response.json()) as T & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? "The request could not be completed.");
+  return data;
 }
 
-export function readProfile(): ProfileAssets {
-  if (typeof window === "undefined") return defaultProfile;
-  const saved = window.localStorage.getItem(PROFILE_STORAGE_KEY);
-  if (!saved) return defaultProfile;
-  try {
-    const parsed: unknown = JSON.parse(saved);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      !("photo" in parsed) ||
-      !("cv" in parsed) ||
-      !("cvName" in parsed)
-    ) {
-      throw new Error("Saved profile assets have an invalid format.");
-    }
-    return parsed as ProfileAssets;
-  } catch (error) {
-    console.error("Could not read saved profile assets.", error);
-    return defaultProfile;
-  }
+export function fetchPortfolioContent(): Promise<PortfolioContent> {
+  return requestJson<PortfolioContent>("/api/portfolio", { cache: "no-store" });
 }
 
-export function saveProfile(profile: ProfileAssets): void {
-  window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
-  window.dispatchEvent(new Event("portfolio-profile-updated"));
+export async function saveWorks(works: Work[]): Promise<void> {
+  await requestJson("/api/admin/portfolio", {
+    method: "PUT",
+    body: JSON.stringify({ works }),
+  });
+  window.dispatchEvent(new Event("portfolio-content-updated"));
+}
+
+export async function saveProfile(profile: ProfileAssets): Promise<void> {
+  await requestJson("/api/admin/portfolio", {
+    method: "PATCH",
+    body: JSON.stringify({ profile }),
+  });
+  window.dispatchEvent(new Event("portfolio-content-updated"));
+}
+
+export async function uploadMedia(file: File): Promise<string> {
+  const { path, token, publicUrl } = await requestJson<{
+    path: string;
+    token: string;
+    publicUrl: string;
+  }>("/api/admin/media/sign", {
+    method: "POST",
+    body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+  });
+
+  const { error } = await getBrowserClient()
+    .storage.from("portfolio-media")
+    .uploadToSignedUrl(path, token, file, { contentType: file.type });
+  if (error) throw new Error(`Could not upload ${file.name}: ${error.message}`);
+  return publicUrl;
 }

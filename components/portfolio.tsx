@@ -25,7 +25,7 @@ import {
 import { AnimatePresence, motion, useMotionValue } from "framer-motion";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { readProfile, readWorks } from "@/lib/storage";
+import { fetchPortfolioContent } from "@/lib/storage";
 import { categories, type Work } from "@/lib/works";
 
 const navLinks = [
@@ -147,6 +147,7 @@ export default function Portfolio() {
   const [profilePhoto, setProfilePhoto] = useState("");
   const [cv, setCv] = useState("");
   const [cvName, setCvName] = useState("");
+  const [contentError, setContentError] = useState("");
   const [filter, setFilter] = useState<(typeof categoriesFilter)[number]>("All");
   const [activeWork, setActiveWork] = useState(0);
   const [testimonialIndex, setTestimonialIndex] = useState(0);
@@ -155,20 +156,32 @@ export default function Portfolio() {
   const dragX = useMotionValue(0);
 
   useEffect(() => {
-    const syncWorks = () => setWorks(readWorks());
-    const syncProfile = () => {
-      const profile = readProfile();
-      setProfilePhoto(profile.photo);
-      setCv(profile.cv);
-      setCvName(profile.cvName);
-    };
-    syncWorks();
-    syncProfile();
-    window.addEventListener("portfolio-works-updated", syncWorks);
-    window.addEventListener("portfolio-profile-updated", syncProfile);
+    let active = true;
+    async function syncContent() {
+      try {
+        const content = await fetchPortfolioContent();
+        if (active) {
+          setWorks(content.works);
+          setProfilePhoto(content.profile.photo);
+          setCv(content.profile.cv);
+          setCvName(content.profile.cvName);
+          setContentError("");
+        }
+      } catch (error) {
+        if (active) {
+          setContentError(error instanceof Error ? error.message : "Could not load portfolio content.");
+        }
+      }
+    }
+    syncContent();
+    const refreshTimer = window.setInterval(syncContent, 30_000);
+    window.addEventListener("focus", syncContent);
+    window.addEventListener("portfolio-content-updated", syncContent);
     return () => {
-      window.removeEventListener("portfolio-works-updated", syncWorks);
-      window.removeEventListener("portfolio-profile-updated", syncProfile);
+      active = false;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", syncContent);
+      window.removeEventListener("portfolio-content-updated", syncContent);
     };
   }, []);
 
@@ -363,6 +376,7 @@ export default function Portfolio() {
 
       <section id="works" className="section-space">
         <div className="container-wide">
+          {contentError && <p role="status" className="mb-6 rounded-xl border border-rose-300/20 bg-rose-300/5 px-4 py-3 text-sm text-rose-200">{contentError}</p>}
           <Reveal>
             <div className="flex flex-col justify-between gap-7 lg:flex-row lg:items-end">
               <SectionTitle label="Selected work" title="Built around real needs." description="Digital products and visual systems designed to solve practical problems." />
